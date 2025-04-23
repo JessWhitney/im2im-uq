@@ -1,60 +1,62 @@
 #sample config defaults file
 program: core/scripts/router.py
-method: grid # what does this mean?
+method: grid
 metric:
   goal: minimize
   name: mean_size 
-name: 'fastmri_test'
-project: 'fastmri_test'
+name: 'mmgan_test'
+project: 'mmgan_test'
 parameters:
   group:
-    value: "fastmri_test"
+    value: "mmgan_test"
   output_dir:
-    value: "experiments/fastmri_test/outputs/raw"
+    value: "experiments/mmgan_test/outputs/raw"
   dataset:
-    value: "fastmri"
-  num_inputs:
-    value: 1
-  data_split_percentages:
+    value: "mmgan"
+  num_inputs: #TODO: Inputs where
+    value: 2
+  data_split_percentages: #TODO: What this?
     value: [0.8, 0.1, 0.1, 0.0]
   model:
-    value: "UNet"
+    value: "UNet" #Mine still unet right?
   uncertainty_type: 
-    values: ["gaussian","residual_magnitude","softmax","quantiles"]
-  alpha: 
+    values: ['quantiles',] #Is quantiles correct? Can choose more than 1
+  alpha: #TODO: Choose appropriate k values
+    value: 0.1
+  beta:
     value: 0.1
   delta: 
     value: 0.1
   num_lambdas: 
-    value: 1000
+    value: 2000
   rcps_loss: 
     value: "fraction_missed"
   minimum_lambda_softmax:
     value: 0 
   maximum_lambda_softmax: 
-    value: 1.2 
+    value: 12 
   minimum_lambda:
     value: 0 
   maximum_lambda:
     value: 6 
   device:
-    value: "cuda:0"
+    value: "cuda" #Check cuda or cuda:0
   epochs:
-    value: 10
+    value: 20 
   batch_size:
-    value: 78 
+    value: 9
   lr:
-    values: [0.001, 0.0001]
+    values: [0.001, 0.0001,]
   load_from_checkpoint: 
     value: True
   checkpoint_dir:
-    value: "experiments/fastmri_test/checkpoints"
-  checkpoint_every:
+    value: "experiments/mmgan_test/checkpoints"
+  checkpoint_every: #more stuff to check here
     value: 1 
   validate_every:
-    value: 10 
+    value: 1 
   num_validation_images:
-    value: 10
+    value: 2
   q_lo:
     value: 0.05
   q_hi:

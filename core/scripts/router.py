@@ -26,6 +26,7 @@ from core.models.trunks.unet import UNet
 from core.datasets.bsbcm import BSBCMDataset
 from core.datasets.fastmri import FastMRIDataset
 from core.datasets.temca import TEMCADataset
+from core.datasets.mmgan import MMGANDataset
 
 if __name__ == "__main__":
   # Fix the randomness
@@ -63,6 +64,9 @@ if __name__ == "__main__":
   elif wandb.config["dataset"] == "bsbcm":
     path = '/home/aa/data/bsbcm'
     dataset = BSBCMDataset(path, num_instances='all', normalize=wandb.config["output_normalization"])
+  elif wandb.config["dataset"] =="mmgan":
+    path = '/share/gpu0/jjwhit/kappa_cosmos_simulations/kappa_val'
+    dataset = MMGANDataset(path) #TODO: Update args 
   elif wandb.config["dataset"] == "fastmri":
     path = '~/data/singlecoil_train'
     mask_info = {'type': 'equispaced', 'center_fraction' : [0.08], 'acceleration' : [4]}
