@@ -54,7 +54,6 @@ if __name__ == "__main__":
   batch_size = wandb.config['batch_size']
   params['batch_size'] = batch_size
   print("wandb save run.")
-
   # DATASET LOADING
   if wandb.config["dataset"] == "CIFAR10":
     normalize = T.Normalize(mean=[0.485, 0.456, 0.406],
@@ -65,8 +64,8 @@ if __name__ == "__main__":
     path = '/home/aa/data/bsbcm'
     dataset = BSBCMDataset(path, num_instances='all', normalize=wandb.config["output_normalization"])
   elif wandb.config["dataset"] =="mmgan":
-    path = '/share/gpu0/jjwhit/kappa_cosmos_simulations/kappa_val'
-    dataset = MMGANDataset(path) #TODO: Update args 
+    path = '/share/gpu0/jjwhit/samples/real_output/'
+    dataset = MMGANDataset(path, num_instances='all', normalize=wandb.config["output_normalization"])
   elif wandb.config["dataset"] == "fastmri":
     path = '~/data/singlecoil_train'
     mask_info = {'type': 'equispaced', 'center_fraction' : [0.08], 'acceleration' : [4]}
