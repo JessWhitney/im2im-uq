@@ -1,27 +1,25 @@
 #sample config defaults file
-program: core/scripts/router.py
+program: core/scripts/router_GAN.py
 method: grid
 metric:
   goal: minimize
   name: mean_size 
-name: 'mmgan_test'
-project: 'mmgan_test'
+name: 'GAN_test'
+project: 'GAN_test'
 parameters:
   group:
-    value: "mmgan_test"
+    value: "GAN_test"
   output_dir:
-    value: "experiments/mmgan_test/outputs/raw"
+    value: "experiments/gan_test/outputs/raw" # SET this
   dataset:
-    value: "mmgan"
-  num_inputs: #TODO: Inputs where
-    value: 2
-  data_split_percentages: #TODO: What this?
-    value: [0.8, 0.1, 0.1, 0.0]
+    value: "" #put your dataset name here
+  num_inputs:
+    value: 1
   model:
-    value: "UNet" #Mine still unet right?
+    value: "" # put your model name here
   uncertainty_type: 
-    values: ['quantiles',] #Is quantiles correct? Can choose more than 1
-  alpha: #TODO: Choose appropriate k values
+    values: ['GAN',]
+  alpha: 
     value: 0.1
   beta:
     value: 0.1
@@ -38,38 +36,13 @@ parameters:
   minimum_lambda:
     value: 0 
   maximum_lambda:
-    value: 6 
+    value: 6
   device:
-    value: "cuda" #Check cuda or cuda:0
-  epochs:
-    value: 20 
+    value: "cuda"
   batch_size:
-    value: 9
-  lr:
-    values: [0.001, 0.0001,]
-  load_from_checkpoint: 
-    value: True
-  checkpoint_dir:
-    value: "experiments/mmgan_test/checkpoints"
-  checkpoint_every: #more stuff to check here
-    value: 1 
-  validate_every:
-    value: 1 
+    value: 64 
   num_validation_images:
     value: 2
-  q_lo:
-    value: 0.05
-  q_hi:
-    value: 0.95
-  q_lo_weight:
-    value: 1
-  q_hi_weight:
-    value: 1
   mse_weight:
     value: 1
-  num_softmax:
-    value: 50 
-  input_normalization:
-    value: "standard"
-  output_normalization:
-    value: "min-max"
+
