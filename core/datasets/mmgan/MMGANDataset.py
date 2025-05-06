@@ -12,13 +12,17 @@ import glob
 class MMGANDataset(Dataset):
     # path should be absolute, num instances is an int or 'all', normalize can be None, 'standard', or 'min-max'
     #TODO: Don't make this hard coded
-    def __init__(self, path, num_instances, normalize=None):
+    def __init__(self, path, num_instances, normalize=None, gt_files=None, recon_files=None):
         print('loading dataset from ' + path + '...')
-        # GT and reconstructions
-        self.gt_files = sorted(glob.glob(os.path.join(path, 'np_gt_[0-9]*.npy')))
-        self.recon_files = sorted(glob.glob(os.path.join(path, 'np_avgs_[0-9]*.npy')))
-
-        assert len(self.gt_files) == len(self.recon_files), "Mismatch between ground truth and recon files!"
+        if gt_files is not None and recon_files is not None:
+            self.gt_files = gt_files
+            self.recon_files = recon_files
+        else:
+            # GT and reconstructions
+            self.gt_files = sorted(glob.glob(os.path.join(path, 'np_gt_[0-9]*.npy')))
+            self.recon_files = sorted(glob.glob(os.path.join(path, 'np_avgs_[0-9]*.npy')))
+            assert len(self.gt_files) == len(self.recon_files), "Mismatch between ground truth and recon files!"
+        
         if num_instances != 'all':
             if num_instances <= len(self.gt_files):
                 self.gt_files = self.gt_files[:num_instances]
