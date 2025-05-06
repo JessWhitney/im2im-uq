@@ -10,13 +10,13 @@ parameters:
   group:
     value: "GAN_test"
   output_dir:
-    value: "experiments/gan_test/outputs/raw" # SET this
+    value: "/share/gpu0/jjwhit/samples/real_output/"
   dataset:
-    value: "" #put your dataset name here
+    value: "mmgan"
   num_inputs:
     value: 1
   model:
-    value: "" # put your model name here
+    value: "mmgan" 
   uncertainty_type: 
     values: ['GAN',]
   alpha: 
