@@ -1,6 +1,10 @@
 import os, sys, inspect
-
-sys.path.insert(1, os.path.join(sys.path[0], "../../"))
+# to import model function from parent directory
+sys.path.insert(1, os.path.join(os.path.dirname(__file__), "../"))
+print("path to mmGAN", os.path.join(os.path.dirname(__file__), "../"))
+from models.lightning.mmGAN import mmGAN
+sys.path.insert(1, os.path.join(os.path.dirname(__file__), "../../"))
+print("path to this stuff", os.path.join(os.path.dirname(__file__), "../../"))
 import wandb
 import random
 import copy
@@ -18,8 +22,9 @@ from core.models.add_uncertainty import add_uncertainty_GAN
 from core.calibration.calibrate_model import calibrate_model
 from core.utils import fix_randomness
 
+from datasets.mmgan import MMGANDataset
 
-## TODO: check if this is correct!
+
 def nested_set_from_output_fn(model, output, lam=None):
     if lam == None:
         if model.lhat == None:
@@ -27,7 +32,7 @@ def nested_set_from_output_fn(model, output, lam=None):
                 "You have to specify lambda unless your model is already calibrated."
             )
         lam = model.lhat
-
+    # GAN output is samples: (batch_size, samples, im_size, im_size)
     prediction = output.mean(axis=1)
     upper_edge = lam * output.std(axis=1) + prediction
     lower_edge = -lam * output.std(axis=1) + prediction
@@ -78,15 +83,35 @@ if __name__ == "__main__":
     print("wandb save run.")
 
     # DATASET LOADING
-    ## TODO: Load your dataset here. Make sure each point is a tuple (input, target).
-    calib_dataset = None
-    val_dataset = None
+    # Make sure each point is a tuple (input, target).
+    random.seed(42)
+    data_path = "/share/gpu0/jjwhit/samples/real_output/"
+    gt_files = sorted(glob.glob(os.path.join(data_path, 'np_gt_[0-9]*.npy')))
+    recon_files = sorted(glob.glob(os.path.join(data_path, 'np_avgs_[0-9]*.npy')))
+    assert len(gt_files) == len(recon_files)
+
+    # pair recons with gt, and shuffle
+    paired = list(zip(gt_files, recon_files))
+    random.shuffle(paired)
+    gt_files, recon_files = zip(*paired)
+
+    #split into calibration, validation, and testing
+    n = len(gt_files)
+    n_cal = int(0.8*n)
+    n_val = int(0.1*n)
+
+    # do I want to normalise this way?
+    calib_dataset = MMGANDataset(gt_files=gt_files[:n_calib], recon_files=recon_files[:n_calib], normalize='min-max')
+    val_dataset = MMGANDataset(gt_files=gt_files[n_calib:n_calib+n_val], recon_files=recon_files[n_calib:n_calib+n_val], normalize='min-max')
+    test_dataset = MMGANDataset(gt_files=gt_files[n_calib+n_val:], recon_files=recon_files[n_calib+n_val:], normalize='min-max')
+
+    # batch if needed
 
     # MODEL LOADING
-    ## TODO: Load your model here.
-    trunk = None
+    trunk = mmGAN.load_from_checkpoint(checkpoint_path="/share/gpu0/jjwhit/mass_map/mm_models/mmgan_training_real_output/checkpoint-epoch=93.ckpt")
+    trunk.cuda() # not sure if this is needed
+    trunk.eval() # should I also set to eval mode here first? I think yes
 
-    # ADD LAST LAYER OF MODEL
     model = add_uncertainty_GAN(trunk, nested_set_from_output_fn)
 
     model.eval()

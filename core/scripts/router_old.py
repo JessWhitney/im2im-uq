@@ -53,7 +53,7 @@ if __name__ == "__main__":
   params = { key: wandb.config[key] for key in wandb.config.keys() }
   batch_size = wandb.config['batch_size']
   params['batch_size'] = batch_size
-  print("wandb save run.")
+  print("wandb save run.")    
   # DATASET LOADING
   if wandb.config["dataset"] == "CIFAR10":
     normalize = T.Normalize(mean=[0.485, 0.456, 0.406],
