@@ -8,6 +8,9 @@ import json
 
 class ModelWithUncertainty(nn.Module):
     def __init__(self, baseModel, in_nested_sets_from_output_fn):
+        """ Given a model, and a function which returns lower/upper bounds of predictions,
+        this returns a new model which incorporates both
+        """
         super(ModelWithUncertainty, self).__init__()
         self.baseModel = baseModel
         self.register_buffer("lhat", None)
@@ -28,15 +31,30 @@ class ModelWithUncertainty(nn.Module):
 
         return lower_edge, prediction, upper_edge
 
-    def nested_sets(self, x, lam=None):
-        if lam == None:
-            if self.lhat == None:
-                raise Exception(
-                    "You have to specify lambda unless your model is already calibrated."
-                )
-            lam = self.lhat
-        output = self(*x)
-        return self.nested_sets_from_output(output, lam=lam)
+    # def nested_sets(self, x, lam=None):
+    #     if lam == None:
+    #         if self.lhat == None:
+    #             raise Exception(
+    #                 "You have to specify lambda unless your model is already calibrated."
+    #             )
+    #         lam = self.lhat
+    #     output = self(*x)
+    #     return self.nested_sets_from_output(output, lam=lam)
+
+def nested_sets(self, output_or_input, lam=None, is_output=True):
+    if lam is None:
+        if self.lhat is None:
+            raise Exception(
+                "You have to specify lambda unless your model is already calibrated."
+            )
+        lam = self.lhat
+
+    if is_output:
+        output = output_or_input  # it's already posterior samples
+    else:
+        output = self(output_or_input)  # need to run the model
+
+    return self.nested_sets_from_output(output, lam=lam)
 
     def set_lhat(self, lhat):
         self.lhat = lhat

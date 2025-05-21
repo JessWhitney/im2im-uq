@@ -148,7 +148,7 @@ def eval_set_metrics(model, dataset, config):
       
       for i in range(len(dataset)):
         print(f"Validation output {i}")
-        outputs[i,:,:,:,:] = model(dataset[i][0].unsqueeze(0).to(device)).cpu()
+        outputs[i,:,:,:] = model(dataset[i][0].unsqueeze(0).to(device)).cpu()
     out_dataset = TensorDataset(outputs,labels)
 
     print("GET RCPS METRICS FROM OUTPUTS")

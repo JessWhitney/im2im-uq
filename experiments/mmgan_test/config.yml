@@ -19,6 +19,7 @@ parameters:
     value: "mmgan" 
   uncertainty_type: 
     values: ['GAN',]
+    # try with 1 alpha val first, this is 90% coverage, then we can change alpha and delta to arrays
   alpha: 
     value: 0.1
   beta:
@@ -36,13 +37,18 @@ parameters:
   minimum_lambda:
     value: 0 
   maximum_lambda:
-    value: 6
+    value: 3
   device:
     value: "cuda"
   batch_size:
-    value: 64 
+    value: 64 # changed back to 64 after testing with 50 for even-nes
   num_validation_images:
     value: 2
   mse_weight:
     value: 1
+  lr:
+    value: 1
+  im_size:
+    value: 300
+
 

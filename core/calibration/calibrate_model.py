@@ -12,7 +12,7 @@ import pdb
 
 def get_rcps_losses(model, dataset, rcps_loss_fn, lam, device):
   losses = []
-  dataloader = DataLoader(dataset, batch_size=64, shuffle=False, num_workers=0, pin_memory=True) 
+  dataloader = DataLoader(dataset, batch_size=64, shuffle=False, num_workers=0, pin_memory=True)
   for batch in dataloader:
     sets = model.nested_sets_from_output(batch,lam) 
     losses = losses + [rcps_loss_fn(sets, labels),]
@@ -33,7 +33,7 @@ def get_rcps_metrics_from_outputs(model, out_dataset, rcps_loss_fn, device):
   sizes = []
   residuals = []
   spatial_miscoverages = []
-  dataloader = DataLoader(out_dataset, batch_size=64, shuffle=False, num_workers=0, pin_memory=True) 
+  dataloader = DataLoader(out_dataset, batch_size=64, shuffle=False, num_workers=0, pin_memory=True)
   model = model.to(device)
   for batch in dataloader:
     x, labels = batch
@@ -108,38 +108,46 @@ def calibrate_model(model, dataset, config):
       outputs = torch.cat([model(x[0].unsqueeze(0).to(device)).to('cpu') for x in iter(dataset)])
       print("Labels initialized.")
     else:
-      labels_shape = list(dataset[0][1].unsqueeze(0).shape)
-      labels_shape[0] = len(dataset)
-      labels = torch.zeros(tuple(labels_shape), device='cpu')
-      outputs_shape = list(model(dataset[0][0].unsqueeze(0).to(device)).shape)
-      outputs_shape[0] = len(dataset)
-      outputs = torch.zeros(tuple(outputs_shape),device='cpu')
+      # labels_shape = list(dataset[0][0].unsqueeze(0).shape)
+      # labels_shape[0] = len(dataset)
+      # labels = torch.zeros(tuple(labels_shape), device='cpu', dtype=torch.float64)
+      # # outputs_shape = list(model(dataset[0][0].unsqueeze(0).to(device)).shape)
+      # outputs_shape = list(dataset[0][1].unsqueeze(0).shape)
+      # outputs_shape[0] = len(dataset)
+      # outputs = torch.zeros(tuple(outputs_shape),device='cpu', dtype=torch.float64)
+      n_samples = len(dataset)
+      sample_label = dataset[0][0] # [300, 300]
+      sample_output = dataset[0][1] # [32, 300, 300]
+      labels = torch.zeros((n_samples, *sample_label.shape), dtype=torch.float64)
+      outputs = torch.zeros((n_samples, *sample_output.shape), dtype=torch.float64)
+      print("shape of outputs", outputs.shape, "and of labels", labels.shape, flush=True)
       print("Collecting dataset")
-      tempDL = DataLoader(dataset, num_workers=0, batch_size=config['batch_size'], pin_memory=True) 
+      tempDL = DataLoader(dataset, num_workers=0, batch_size=config['batch_size'], pin_memory=True)
       counter = 0
       for batch in tqdm(tempDL):
-        outputs[counter:counter+batch[0].shape[0],:,:,:,:] = model(batch[0].to(device)).cpu()
-        labels[counter:counter+batch[1].shape[0]] = batch[1]
-        counter += batch[0].shape[0]
-      #for i in tqdm(range(len(dataset))):
-      #  labels[i] = dataset[i][1].cpu()
-      #  outputs[i,:,:,:,:] = model(dataset[i][0].unsqueeze(0).to(device)).cpu()
+        batch_size = batch[0].shape[0]
+        # outputs[counter:counter+batch[0].shape[0],:,:,:] = model(batch[0].to(device)).cpu()
+        outputs[counter:counter+batch_size, :, :, :] = batch[1]
+        labels[counter:counter+batch_size] = batch[0]
+        counter += batch_size
 
-    print("Output dataset")
+    print("Output dataset", flush=True) # this prints
     out_dataset = TensorDataset(outputs,labels.cpu())
     dlambda = lambdas[1]-lambdas[0]
     model.set_lhat(lambdas[-1]+dlambda-1e-9)
-    print("Computing losses")
+    print("Computing losses", flush=True)
     calib_loss_table = torch.zeros((outputs.shape[0],lambdas.shape[0]))
     for lam in reversed(lambdas):
+      # losses here is the failure rate
       losses = get_rcps_losses_from_outputs(model, out_dataset, rcps_loss_fn, lam-dlambda, device)
       calib_loss_table[:,np.where(lambdas==lam)[0]] = losses[:,None]
+      # Aim is to match alpha
       Rhat = losses.mean()
       RhatPlus = HB_mu_plus(Rhat.item(), losses.shape[0], delta)
-      print(f"\rLambda: {lam:.4f}  |  Rhat: {Rhat:.4f}  |  RhatPlus: {RhatPlus:.4f}  ",end='')
+      print(f"\rLambda: {lam:.4f}  |  Rhat: {Rhat:.4f}  |  RhatPlus: {RhatPlus:.4f}  ",end='', flush=True)
       if Rhat >= alpha or RhatPlus > alpha:
         model.set_lhat(lam)
         print("")
-        print(f"Model's lhat set to {model.lhat}")
+        print(f"Model's lhat set to {model.lhat}", flush=True)
         break
     return model, calib_loss_table

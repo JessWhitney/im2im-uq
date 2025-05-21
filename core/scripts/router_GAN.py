@@ -1,10 +1,12 @@
 import os, sys, inspect
 # to import model function from parent directory
-sys.path.insert(1, os.path.join(os.path.dirname(__file__), "../"))
-print("path to mmGAN", os.path.join(os.path.dirname(__file__), "../"))
+base_dir = os.path.dirname(__file__)
+rcgan_root = os.path.abspath(os.path.join(base_dir, '../../../../rcGAN'))
+sys.path.insert(0, rcgan_root)
 from models.lightning.mmGAN import mmGAN
-sys.path.insert(1, os.path.join(os.path.dirname(__file__), "../../"))
-print("path to this stuff", os.path.join(os.path.dirname(__file__), "../../"))
+from utils.parse_args import create_arg_parser
+rcps_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(1, rcps_path) 
 import wandb
 import random
 import copy
@@ -16,14 +18,14 @@ import torchvision
 import torchvision.transforms as T
 import warnings
 import yaml
+import glob
+# import types
 
 from core.scripts.eval import get_images, eval_net, get_loss_table, eval_set_metrics
 from core.models.add_uncertainty import add_uncertainty_GAN
 from core.calibration.calibrate_model import calibrate_model
 from core.utils import fix_randomness
-
-from datasets.mmgan import MMGANDataset
-
+from core.datasets.mmgan import MMGANDataset
 
 def nested_set_from_output_fn(model, output, lam=None):
     if lam == None:
@@ -39,15 +41,21 @@ def nested_set_from_output_fn(model, output, lam=None):
 
     return lower_edge, prediction, upper_edge
 
+class TempArgs:
+    def __init__(self, im_size):
+        self.im_size = im_size
+        # Fix the randomness
+        fix_randomness()
+        warnings.filterwarnings("ignore")
 
 if __name__ == "__main__":
-    # Fix the randomness
-    fix_randomness()
-    warnings.filterwarnings("ignore")
-
+    # importing base model args
     print("Entered main method.")
     wandb.init()
     print("wandb init.")
+    config = wandb.config
+    im_size = config.im_size
+    temp_args = TempArgs(im_size)
     # Check if results exist already
     output_dir = wandb.config["output_dir"]
     results_fname = (
@@ -55,20 +63,12 @@ if __name__ == "__main__":
         + f"/results_"
         + wandb.config["dataset"]
         + "_"
-        + wandb.config["uncertainty_type"]
-        + "_"
-        + str(wandb.config["batch_size"])
-        + "_"
-        + str(wandb.config["lr"])
-        + "_"
-        + wandb.config["input_normalization"]
-        + "_"
-        + wandb.config["output_normalization"].replace(".", "_")
+        + wandb.config["uncertainty_type"].replace(".", "_")
         + ".pkl"
     )
     if os.path.exists(results_fname):
         print(f"Results already precomputed and stored in {results_fname}!")
-        os._exit(os.EX_OK)
+        # os._exit(os.EX_OK)
     else:
         print("Computing the results from scratch!")
     # Otherwise compute results
@@ -84,26 +84,30 @@ if __name__ == "__main__":
 
     # DATASET LOADING
     # Make sure each point is a tuple (input, target).
+    # Input = Data not GT! So should be re + im shear, re + im KS recon.
     random.seed(42)
     data_path = "/share/gpu0/jjwhit/samples/real_output/"
     gt_files = sorted(glob.glob(os.path.join(data_path, 'np_gt_[0-9]*.npy')))
-    recon_files = sorted(glob.glob(os.path.join(data_path, 'np_avgs_[0-9]*.npy')))
-    assert len(gt_files) == len(recon_files)
+    samp_files = sorted(glob.glob(os.path.join(data_path, 'np_samps_[0-9]*.npy')))
+    # avg_files = sorted(glob.glob(os.path.join(data_path, 'np_avgs_[0-9]*.npy')))
+    assert len(gt_files) == len(samp_files)
 
-    # pair recons with gt, and shuffle
-    paired = list(zip(gt_files, recon_files))
+    # pair samples with gt, and shuffle
+    paired = list(zip(samp_files, gt_files))
     random.shuffle(paired)
-    gt_files, recon_files = zip(*paired)
+    gt_files, samp_files = zip(*paired)
 
     #split into calibration, validation, and testing
     n = len(gt_files)
-    n_cal = int(0.8*n)
-    n_val = int(0.1*n)
+    n_cal = int(0.4*n)
+    n_val = int(0.05*n)
+    n_end = int(0.05*n)
 
     # do I want to normalise this way?
-    calib_dataset = MMGANDataset(gt_files=gt_files[:n_calib], recon_files=recon_files[:n_calib], normalize='min-max')
-    val_dataset = MMGANDataset(gt_files=gt_files[n_calib:n_calib+n_val], recon_files=recon_files[n_calib:n_calib+n_val], normalize='min-max')
-    test_dataset = MMGANDataset(gt_files=gt_files[n_calib+n_val:], recon_files=recon_files[n_calib+n_val:], normalize='min-max')
+    # TODO: Hard coded while debugging
+    calib_dataset = MMGANDataset(gt_files=gt_files[:n_cal], samp_files=samp_files[:n_cal], normalize='standard', args=temp_args)
+    val_dataset = MMGANDataset(gt_files=gt_files[n_cal:n_cal+n_val], samp_files=samp_files[n_cal:n_cal+n_val], normalize='standard', args=temp_args)
+    test_dataset = MMGANDataset(gt_files=gt_files[n_cal+n_val:n_cal+n_val+n_end], samp_files=samp_files[n_cal+n_val:n_cal+n_val+n_end], normalize='standard', args=temp_args)
 
     # batch if needed
 
@@ -113,17 +117,17 @@ if __name__ == "__main__":
     trunk.eval() # should I also set to eval mode here first? I think yes
 
     model = add_uncertainty_GAN(trunk, nested_set_from_output_fn)
-
     model.eval()
     with torch.no_grad():
-        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=0)
-        val_loss = eval_net(model, val_loader, wandb.config["device"])
-        print(f"Done validating! Validation Loss: {val_loss}")
-        # Save the loss tables for later experiments
-        print(
-            "Get the validation loss table."
-        )  # Doing this first, so I can save it for later experiments.
-        # val_loss_table = get_loss_table(model, val_dataset, wandb.config)
+        # val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=0)
+        # # might want to comment this out
+        # val_loss = eval_net(model, val_loader, wandb.config["device"])
+        # print(f"Done validating! Validation Loss: {val_loss}")
+        # # Save the loss tables for later experiments
+        # print(
+        #     "Get the validation loss table."
+        # )  # Doing this first, so I can save it for later experiments.
+        # # val_loss_table = get_loss_table(model, val_dataset, wandb.config)
 
         print("Calibrate the model.")
         model, calib_loss_table = calibrate_model(model, calib_dataset, params)
@@ -141,15 +145,7 @@ if __name__ == "__main__":
             + f"/loss_table_"
             + wandb.config["dataset"]
             + "_"
-            + wandb.config["uncertainty_type"]
-            + "_"
-            + str(wandb.config["batch_size"])
-            + "_"
-            + str(wandb.config["lr"])
-            + "_"
-            + wandb.config["input_normalization"]
-            + "_"
-            + wandb.config["output_normalization"].replace(".", "_")
+            + wandb.config["uncertainty_type"].replace(".", "_")
             + ".pth",
         )
         print("Loss table saved!")
@@ -171,23 +167,23 @@ if __name__ == "__main__":
             params,
         )
         # Log everything
-        wandb.log(
-            {"epoch": wandb.config["epochs"] + 1, "examples_input": examples_input}
-        )
-        wandb.log(
-            {"epoch": wandb.config["epochs"] + 1, "Lower edge": examples_lower_edge}
-        )
-        wandb.log(
-            {"epoch": wandb.config["epochs"] + 1, "Predictions": examples_prediction}
-        )
-        wandb.log(
-            {"epoch": wandb.config["epochs"] + 1, "Upper edge": examples_upper_edge}
-        )
-        wandb.log(
-            {"epoch": wandb.config["epochs"] + 1, "Ground truth": examples_ground_truth}
-        )
-        wandb.log({"epoch": wandb.config["epochs"] + 1, "Lower length": examples_ll})
-        wandb.log({"epoch": wandb.config["epochs"] + 1, "Upper length": examples_ul})
+        # wandb.log(
+        #     {"epoch": wandb.config["epochs"] + 1, "examples_input": examples_input}
+        # )
+        # wandb.log(
+        #     {"epoch": wandb.config["epochs"] + 1, "Lower edge": examples_lower_edge}
+        # )
+        # wandb.log(
+        #     {"epoch": wandb.config["epochs"] + 1, "Predictions": examples_prediction}
+        # )
+        # wandb.log(
+        #     {"epoch": wandb.config["epochs"] + 1, "Upper edge": examples_upper_edge}
+        # )
+        # wandb.log(
+        #     {"epoch": wandb.config["epochs"] + 1, "Ground truth": examples_ground_truth}
+        # )
+        # wandb.log({"epoch": wandb.config["epochs"] + 1, "Lower length": examples_ll})
+        # wandb.log({"epoch": wandb.config["epochs"] + 1, "Upper length": examples_ul})
         # Get the risk and other metrics
         print("GET THE METRICS INCLUDING SPATIAL MISCOVERAGE")
         risk, sizes, spearman, stratified_risk, mse, spatial_miscoverage = (
@@ -204,7 +200,7 @@ if __name__ == "__main__":
         )
         wandb.log(
             {
-                "epoch": wandb.config["epochs"] + 1,
+                # "epoch": wandb.config["epochs"] + 1,
                 "risk": risk,
                 "mean_size": sizes.mean(),
                 "Spearman": spearman,
