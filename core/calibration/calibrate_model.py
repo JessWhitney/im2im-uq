@@ -93,6 +93,7 @@ def calibrate_model(model, dataset, config):
     alpha = config['alpha']
     delta = config['delta']
     device = config['device']
+    num_z_test = config.get("num_z_test", 32)
     print("Initialize lambdas")
     if config["uncertainty_type"] == "softmax":
       lambdas = torch.linspace(config['minimum_lambda_softmax'],config['maximum_lambda_softmax'],config['num_lambdas'])
@@ -108,28 +109,27 @@ def calibrate_model(model, dataset, config):
       outputs = torch.cat([model(x[0].unsqueeze(0).to(device)).to('cpu') for x in iter(dataset)])
       print("Labels initialized.")
     else:
-      # labels_shape = list(dataset[0][0].unsqueeze(0).shape)
-      # labels_shape[0] = len(dataset)
-      # labels = torch.zeros(tuple(labels_shape), device='cpu', dtype=torch.float64)
-      # # outputs_shape = list(model(dataset[0][0].unsqueeze(0).to(device)).shape)
-      # outputs_shape = list(dataset[0][1].unsqueeze(0).shape)
-      # outputs_shape[0] = len(dataset)
-      # outputs = torch.zeros(tuple(outputs_shape),device='cpu', dtype=torch.float64)
-      n_samples = len(dataset)
-      sample_label = dataset[0][0] # [300, 300]
-      sample_output = dataset[0][1] # [32, 300, 300]
-      labels = torch.zeros((n_samples, *sample_label.shape), dtype=torch.float64)
-      outputs = torch.zeros((n_samples, *sample_output.shape), dtype=torch.float64)
+      tempDL = DataLoader(dataset, num_workers=0, batch_size=config['batch_size'], pin_memory=True)
+      in_batch, batch_label  = next(iter(tempDL))
+      labels_shape = (len(dataset), *batch_label.shape[1:])
+      labels = torch.zeros(labels_shape, device='cpu', dtype=torch.float64)
+      with torch.no_grad():
+        # shape should be [batch, 32, 300, 300]
+        samps = torch.stack([model(in_batch.to(device)).squeeze(1) for _ in range(num_z_test)], dim=1)
+      # Should be [400, 32, 300, 300]
+      outputs_shape = (len(dataset), *samps.shape[1:])
+      outputs = torch.zeros(outputs_shape, device='cpu', dtype=torch.float64)
       print("shape of outputs", outputs.shape, "and of labels", labels.shape, flush=True)
       print("Collecting dataset")
-      tempDL = DataLoader(dataset, num_workers=0, batch_size=config['batch_size'], pin_memory=True)
       counter = 0
       for batch in tqdm(tempDL):
-        batch_size = batch[0].shape[0]
-        # outputs[counter:counter+batch[0].shape[0],:,:,:] = model(batch[0].to(device)).cpu()
-        outputs[counter:counter+batch_size, :, :, :] = batch[1]
-        labels[counter:counter+batch_size] = batch[0]
-        counter += batch_size
+        input_batch = batch[0].to(device)
+        B = input_batch.shape[0]
+        with torch.no_grad():
+          samples = torch.stack([model(input_batch).squeeze(1) for _ in range(num_z_test)], dim=1)
+        outputs[counter:counter+B] = samples.cpu()
+        labels[counter:counter+B] = batch[1].cpu()
+        counter += B
 
     print("Output dataset", flush=True) # this prints
     out_dataset = TensorDataset(outputs,labels.cpu())
