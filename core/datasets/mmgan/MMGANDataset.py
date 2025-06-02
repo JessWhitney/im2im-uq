@@ -1,6 +1,6 @@
 import os,sys,inspect
 base_dir = os.path.dirname(__file__)
-rcgan_root = os.path.abspath(os.path.join(base_dir, '../../../../rcGAN'))
+rcgan_root = os.path.abspath(os.path.join(base_dir, '/home/jjwhit/rcGAN/'))
 print("RcGAN path:", rcgan_root)
 sys.path.insert(0, rcgan_root)
 from data.lightning.MassMappingDataModule import MMDataTransform
@@ -52,7 +52,6 @@ class MMGANDataset(Dataset):
         # # recon_torch = torch.from_numpy(recon)
 
         # # model in is re + im of shear, re + im of KS
-        # shear, normalized_gt,_,_ = self.data_transform(gt)
         
         # if self.normalize:
         #     shear, _ = utils.normalize(shear, type=self.normalize, per_pixel=False, input_output='input')
@@ -61,16 +60,26 @@ class MMGANDataset(Dataset):
         # f"Unexpected shape for shear: {shear.shape}"
         # return shear, normalized_gt
         # # return recon_torch, gt_torch
-        sample_path = self.samp_files[idx]
+        # sample_path = self.samp_files[idx]
         gt_path = self.gt_files[idx]
-
-        samples = np.load(sample_path)  # shape [32, H, W]
+        # samples = np.load(sample_path)  # shape [32, H, W]
         gt = np.load(gt_path)           # shape [H, W]
+        if gt.ndim ==3:
+            if gt.shape[0] ==1:
+                gt = gt[0]
+            elif gt.shape[2] ==1:
+                gt = gt[:,:,0]
+            else:
+                raise ValueError(f"Expected (im_size, im_size) GT maps, got: {gt.shape}")
+        if gt.ndim !=2:
+            raise ValueError(f"GT Maps should be 2d, got: {gt.shape}")
+        shear,_,_,_ = self.data_transform(gt)
 
-        samples = torch.tensor(samples).float()
-        gt = torch.tensor(gt).float()
+        # samples = torch.tensor(samples).float()
+        gt_torch = torch.tensor(gt).float()
 
-        return samples, gt
+        # return samples, gt
+        return shear, gt_torch
 
 
 if __name__ == "__main__":
