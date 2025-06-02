@@ -35,9 +35,16 @@ def nested_set_from_output_fn(model, output, lam=None):
             )
         lam = model.lhat
     # GAN output is samples: (batch_size, samples, im_size, im_size)
+
+    # TODO: Don't hardcode this - checking if I need to renormalise
+    kappa_mean = 0.00015744
+    kappa_std = 0.02968585
+    output = output * kappa_std + kappa_mean
+
     prediction = output.mean(axis=1)
-    upper_edge = lam * output.std(axis=1) + prediction
-    lower_edge = -lam * output.std(axis=1) + prediction
+    std = output.std(dim=1)
+    upper_edge = lam * std + prediction
+    lower_edge = -lam * std + prediction
 
     return lower_edge, prediction, upper_edge
 
@@ -60,7 +67,7 @@ if __name__ == "__main__":
     output_dir = wandb.config["output_dir"]
     results_fname = (
         output_dir
-        + f"/results_"
+        + f"results_"
         + wandb.config["dataset"]
         + "_"
         + wandb.config["uncertainty_type"].replace(".", "_")
@@ -68,7 +75,7 @@ if __name__ == "__main__":
     )
     if os.path.exists(results_fname):
         print(f"Results already precomputed and stored in {results_fname}!")
-        # os._exit(os.EX_OK)
+        os._exit(os.EX_OK)
     else:
         print("Computing the results from scratch!")
     # Otherwise compute results
@@ -93,7 +100,7 @@ if __name__ == "__main__":
     assert len(gt_files) == len(samp_files)
 
     # pair samples with gt, and shuffle
-    paired = list(zip(samp_files, gt_files))
+    paired = list(zip(gt_files, samp_files))
     random.shuffle(paired)
     gt_files, samp_files = zip(*paired)
 
@@ -103,8 +110,6 @@ if __name__ == "__main__":
     n_val = int(0.05*n)
     n_end = int(0.05*n)
 
-    # do I want to normalise this way?
-    # TODO: Hard coded while debugging
     calib_dataset = MMGANDataset(gt_files=gt_files[:n_cal], samp_files=samp_files[:n_cal], normalize='standard', args=temp_args)
     val_dataset = MMGANDataset(gt_files=gt_files[n_cal:n_cal+n_val], samp_files=samp_files[n_cal:n_cal+n_val], normalize='standard', args=temp_args)
     test_dataset = MMGANDataset(gt_files=gt_files[n_cal+n_val:n_cal+n_val+n_end], samp_files=samp_files[n_cal+n_val:n_cal+n_val+n_end], normalize='standard', args=temp_args)
@@ -112,23 +117,14 @@ if __name__ == "__main__":
     # batch if needed
 
     # MODEL LOADING
+    # TODO: Note, mb this shouldn't be hard coded either?
     trunk = mmGAN.load_from_checkpoint(checkpoint_path="/share/gpu0/jjwhit/mass_map/mm_models/mmgan_training_real_output/checkpoint-epoch=93.ckpt")
-    trunk.cuda() # not sure if this is needed
-    trunk.eval() # should I also set to eval mode here first? I think yes
+    trunk.cuda() 
+    trunk.eval()
 
     model = add_uncertainty_GAN(trunk, nested_set_from_output_fn)
     model.eval()
     with torch.no_grad():
-        # val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=0)
-        # # might want to comment this out
-        # val_loss = eval_net(model, val_loader, wandb.config["device"])
-        # print(f"Done validating! Validation Loss: {val_loss}")
-        # # Save the loss tables for later experiments
-        # print(
-        #     "Get the validation loss table."
-        # )  # Doing this first, so I can save it for later experiments.
-        # # val_loss_table = get_loss_table(model, val_dataset, wandb.config)
-
         print("Calibrate the model.")
         model, calib_loss_table = calibrate_model(model, calib_dataset, params)
         print(f"Model calibrated! lambda hat = {model.lhat}")
@@ -140,7 +136,7 @@ if __name__ == "__main__":
             except OSError:
                 pass
         torch.save(
-            calib_loss_table,  # torch.cat([val_loss_table, calib_loss_table], dim=0),
+            calib_loss_table, 
             output_dir
             + f"/loss_table_"
             + wandb.config["dataset"]
@@ -167,23 +163,23 @@ if __name__ == "__main__":
             params,
         )
         # Log everything
-        # wandb.log(
-        #     {"epoch": wandb.config["epochs"] + 1, "examples_input": examples_input}
-        # )
-        # wandb.log(
-        #     {"epoch": wandb.config["epochs"] + 1, "Lower edge": examples_lower_edge}
-        # )
-        # wandb.log(
-        #     {"epoch": wandb.config["epochs"] + 1, "Predictions": examples_prediction}
-        # )
-        # wandb.log(
-        #     {"epoch": wandb.config["epochs"] + 1, "Upper edge": examples_upper_edge}
-        # )
-        # wandb.log(
-        #     {"epoch": wandb.config["epochs"] + 1, "Ground truth": examples_ground_truth}
-        # )
-        # wandb.log({"epoch": wandb.config["epochs"] + 1, "Lower length": examples_ll})
-        # wandb.log({"epoch": wandb.config["epochs"] + 1, "Upper length": examples_ul})
+        wandb.log(
+            {"examples_input": examples_input}
+        )
+        wandb.log(
+            {"Lower edge": examples_lower_edge}
+        )
+        wandb.log(
+            {"Predictions": examples_prediction}
+        )
+        wandb.log(
+            {"Upper edge": examples_upper_edge}
+        )
+        wandb.log(
+            {"Ground truth": examples_ground_truth}
+        )
+        wandb.log({ "Lower length": examples_ll})
+        wandb.log({"Upper length": examples_ul})
         # Get the risk and other metrics
         print("GET THE METRICS INCLUDING SPATIAL MISCOVERAGE")
         risk, sizes, spearman, stratified_risk, mse, spatial_miscoverage = (
@@ -191,16 +187,15 @@ if __name__ == "__main__":
         )
         print("DONE")
 
-        # data = [[label, val] for (label, val) in zip(["Easy","Easy-medium", "Medium-Hard", "Hard"], stratified_risk.numpy())]
-        # table = wandb.Table(data=data, columns = ["Difficulty", "Empirical Risk"])
-        # wandb.log({"Size-Stratified Risk Barplot" : wandb.plot.bar(table, "Difficulty","Empirical Risk", title="Size-Stratified Risk") })
+        data = [[label, val] for (label, val) in zip(["Easy","Easy-medium", "Medium-Hard", "Hard"], stratified_risk.numpy())]
+        table = wandb.Table(data=data, columns = ["Difficulty", "Empirical Risk"])
+        wandb.log({"Size-Stratified Risk Barplot" : wandb.plot.bar(table, "Difficulty","Empirical Risk", title="Size-Stratified Risk") })
 
         print(
             f"Risk: {risk}  |  Mean size: {sizes.mean()}  |  Spearman: {spearman}  |  Size-stratified risk: {stratified_risk} | MSE: {mse} | Spatial miscoverage: (mu, sigma, min, max) = ({spatial_miscoverage.mean()}, {spatial_miscoverage.std()}, {spatial_miscoverage.min()}, {spatial_miscoverage.max()})"
         )
         wandb.log(
             {
-                # "epoch": wandb.config["epochs"] + 1,
                 "risk": risk,
                 "mean_size": sizes.mean(),
                 "Spearman": spearman,
