@@ -27,7 +27,7 @@ from core.calibration.calibrate_model import calibrate_model
 from core.utils import fix_randomness
 from core.datasets.mmgan import MMGANDataset
 
-def nested_set_from_output_fn(model, output, lam=None):
+def nested_set_from_output_fn(model, output, lam=None, alpha=None):
     if lam == None:
         if model.lhat == None:
             raise Exception(
@@ -40,11 +40,15 @@ def nested_set_from_output_fn(model, output, lam=None):
     kappa_mean = 0.00015744
     kappa_std = 0.02968585
     output = output * kappa_std + kappa_mean
+    lower_q = 100 * (alpha / 2)
+    upper_q = 100 * (1 - alpha / 2)
 
     prediction = output.mean(axis=1)
-    std = output.std(dim=1)
-    upper_edge = lam * std + prediction
-    lower_edge = -lam * std + prediction
+    # std = output.std(dim=1)
+    lower_per = np.percentile(output, lower_q, axis=0)
+    upper_per = np.percentile(output, upper_q, axis=0)
+    upper_edge = lam * upper_per + prediction
+    lower_edge = -lam * lower_per + prediction
 
     return lower_edge, prediction, upper_edge
 
